@@ -5,11 +5,11 @@ using System.Runtime.InteropServices;
 // General Information about an assembly is controlled through the following
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("Unity VR Patcher")]
+[assembly: AssemblyTitle("UnityVRPatcher")]
 [assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
-[assembly: AssemblyProduct("Unity VR Patcher")]
+[assembly: AssemblyProduct("UnityVRPatcher")]
 [assembly: AssemblyCopyright("Copyright ©  2020")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
@@ -20,7 +20,7 @@ using System.Runtime.InteropServices;
 [assembly: ComVisible(false)]
 
 // The following GUID is for the ID of the typelib if this project is exposed to COM
-[assembly: Guid("f9ee9a2e-b749-4fe7-9453-ed3cbbbd919b")]
+[assembly: Guid("c4d8117a-3a2a-45a4-8d34-27d1a8ed2c02")]
 
 // Version information for an assembly consists of the following four values:
 //
