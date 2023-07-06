@@ -4,29 +4,57 @@ using System.Diagnostics;
 using System.IO;
 using AssetsTools.NET;
 using AssetsTools.NET.Extra;
+using Bluscream;
 
 namespace UnityVRPatcher
 {
-    class Program
-    {
+    class Program {
+        static FileInfo patcherFile;
+        static FileInfo gameExe;
+        static string gameName;
+        static DirectoryInfo gameDir;
+        static DirectoryInfo gameDataDir;
+        static DirectoryInfo gamePluginsDir;
+        static FileInfo gameManagersFile;
+        static FileInfo gameManagersBackupFile;
+        static FileInfo classDataFile;
         static void Main(string[] args)
         {
-            try
-            {
-                Console.WriteLine(Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName));
-                var gameExePath = args[0];
-                var gamePath = Path.GetDirectoryName(gameExePath);
-                var gameName = Path.GetFileNameWithoutExtension(gameExePath);
-                var dataPath = Path.Combine(gamePath, $"{gameName}_Data/");
-                var gameManagersPath = Path.Combine(dataPath, $"globalgamemanagers");
-                var gameManagersBackupPath = CreateGameManagersBackup(gameManagersPath);
-                var patcherPath = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName);
-                var classDataPath = Path.Combine(patcherPath, "classdata.tpk");
+            try {
+                patcherFile = new FileInfo(Process.GetCurrentProcess().MainModule.FileName);
+                Console.WriteLine(patcherFile.ToString());
+                if (args.Length < 1) {
+                    Console.WriteLine("Usage: UnityVRPatcher.exe \"<game.exe>\"");
+                    Console.WriteLine("Just drag and drop the game exe onto UnityVRPatcher.exe");
+                    Console.ReadKey();
+                    return;
+                }
+                gameExe = new FileInfo(string.Join(" ", args));
+                Console.WriteLine("gameExe = "+gameExe.ToString());
+                gameDir = gameExe.Directory;
+                Console.WriteLine("gameDir = " + gameDir.ToString());
+                gameName = Path.GetFileNameWithoutExtension(gameExe.Name);
+                Console.WriteLine("gameName = " + gameName);
+                gameDataDir = gameDir.Combine($"{gameName}_Data/");
+                Console.WriteLine("gameDataDir = " + gameDataDir.ToString());  
+                gamePluginsDir = gameDataDir.Combine("Plugins");
+                Console.WriteLine("gamePluginsDir = " + gamePluginsDir.ToString());
+                gameManagersFile = gameDataDir.CombineFile($"globalgamemanagers");
+                Console.WriteLine("gameManagersFile = " + gameManagersFile.ToString());
+                gameManagersBackupFile = CreateGameManagersBackup(gameManagersFile);
+                Console.WriteLine("gameManagersBackupFile = " + gameManagersBackupFile.ToString());
+                classDataFile = patcherFile.Directory.CombineFile("classdata.tpk");
+                Console.WriteLine("classDataFile = " + classDataFile.ToString());
 
-                CopyPlugins(patcherPath, dataPath);
-                PatchVR(gameManagersBackupPath, gameManagersPath, classDataPath);
+                ExtractPlugins(gamePluginsDir);
+                PatchVR(gameManagersBackupFile, gameManagersFile, classDataFile);
 
                 Console.WriteLine("Patched successfully, probably.");
+                Console.ReadKey();
+            }
+            catch   (Exception ex) {
+                Console.WriteLine(ex.ToString());
+                Console.ReadKey();
             }
             finally
             {
@@ -35,46 +63,39 @@ namespace UnityVRPatcher
             }
         }
 
-        static void CopyPlugins(string patcherPath, string dataPath)
-        {
-            Console.WriteLine("Copying plugins...");
+        public static void CopyStream(Stream input, Stream output) {
+            // Insert null checking here for production
+            byte[] buffer = new byte[8192];
 
-            var gamePluginsPath = Path.Combine(dataPath, "Plugins");
-            if (!Directory.Exists(gamePluginsPath))
-            {
-                Directory.CreateDirectory(gamePluginsPath);
-            }
-            var patcherPluginsPath = Path.Combine(patcherPath, "Plugins");
-            var pluginFilePaths = Directory.GetFiles(patcherPluginsPath);
-            Console.WriteLine($"Found plugins:\n {string.Join(",\n", pluginFilePaths)}");
-            foreach (var filePath in pluginFilePaths)
-            {
-                File.Copy(filePath, Path.Combine(gamePluginsPath, Path.GetFileName(filePath)), true);
+            int bytesRead;
+            while ((bytesRead = input.Read(buffer, 0, buffer.Length)) > 0) {
+                output.Write(buffer, 0, bytesRead);
             }
         }
 
-        static string CreateGameManagersBackup(string gameManagersPath)
+        static void ExtractPlugins(DirectoryInfo gamePluginsDir)
         {
-            Console.WriteLine($"Backing up '{gameManagersPath}'...");
-            var backupPath = gameManagersPath + ".bak";
-            if (File.Exists(backupPath))
-            {
-                Console.WriteLine($"Backup already exists.");
-                return backupPath;
-            }
-            File.Copy(gameManagersPath, backupPath);
+            Console.WriteLine($"Extracting embedded plugins to {gamePluginsDir}...");
+            gamePluginsDir.CombineFile(nameof(re.openvr_api)+".dll").WriteAllBytes(re.openvr_api, overwrite: false);
+            gamePluginsDir.CombineFile(nameof(re.OVRPlugin)+".dll").WriteAllBytes(re.OVRPlugin, overwrite: false);
+        }
+
+        static FileInfo CreateGameManagersBackup(FileInfo gameManagersFile)
+        {
+            Console.WriteLine($"Backing up '{gameManagersFile}'...");
+            var backupPath = gameManagersFile.Backup(false);
             Console.WriteLine($"Created backup in '{backupPath}'");
             return backupPath;
         }
 
-        static void PatchVR(string gameManagersBackupPath, string gameManagersPath, string classDataPath)
+        static void PatchVR(FileInfo gameManagersBackupPath, FileInfo gameManagersPath, FileInfo classDataPath)
         {
             Console.WriteLine("Patching globalgamemanagers...");
             Console.WriteLine($"Using classData file from path '{classDataPath}'");
 
             AssetsManager am = new AssetsManager();
-            am.LoadClassPackage(classDataPath);
-            AssetsFileInstance ggm = am.LoadAssetsFile(gameManagersBackupPath, false);
+            am.LoadClassPackage(classDataPath.FullName);
+            AssetsFileInstance ggm = am.LoadAssetsFile(gameManagersBackupPath.FullName, false);
             AssetsFile ggmFile = ggm.file;
             AssetsFileTable ggmTable = ggm.table;
             am.LoadClassDatabaseFromPackage(ggmFile.typeTree.unityVersion);
@@ -82,7 +103,7 @@ namespace UnityVRPatcher
             List<AssetsReplacer> replacers = new List<AssetsReplacer>();
 
             AssetFileInfoEx buildSettings = ggmTable.GetAssetInfo(11);
-            AssetTypeValueField buildSettingsBase = am.GetATI(ggmFile, buildSettings).GetBaseField();
+            AssetTypeValueField buildSettingsBase = am.GetTypeInstance(ggmFile, buildSettings).GetBaseField();
             AssetTypeValueField enabledVRDevices = buildSettingsBase.Get("enabledVRDevices").Get("Array");
             AssetTypeTemplateField stringTemplate = enabledVRDevices.templateField.children[1];
             AssetTypeValueField[] vrDevicesList = new AssetTypeValueField[] { StringField("OpenVR", stringTemplate) };
@@ -90,7 +111,7 @@ namespace UnityVRPatcher
 
             replacers.Add(new AssetsReplacerFromMemory(0, buildSettings.index, (int)buildSettings.curFileType, 0xffff, buildSettingsBase.WriteToByteArray()));
 
-            using (AssetsFileWriter writer = new AssetsFileWriter(File.OpenWrite(gameManagersPath)))
+            using (AssetsFileWriter writer = new AssetsFileWriter(gameManagersPath.OpenWrite()))
             {
                 ggmFile.Write(writer, 0, replacers, 0);
             }
